@@ -1,15 +1,19 @@
-# Google SAML STS
+# KeyMe, a Google SAML to AWS STS connector.
 
-This library allows for one to get STS tokens from AWS when you use Google SAML on your G Suite Account.
+This library allows Google's SAML based federation to use Amazon Web Services’ Security Token Service (STS) for authorization against AWS resources. 
 
 ## To use
-Install the PIP package by doing
-
+Install the PIP package:
 ```
-pip install keyme
+$ pip install keyme
 ```
 
-Once that is installed then all you need to do is import KeyMe from keyme. Example of how to use this see below:
+Once installed, import:
+```
+from keyme import KeyMe
+```
+
+Example usage:
 
 ```
 def generate_keys(event, context):
@@ -26,7 +30,7 @@ def generate_keys(event, context):
     principal = event.get('principal', 'arn:aws:iam::<account_number>:saml-provider/GoogleAppsProvider')
 
     # Duplication is to avoid defaulting values in the class
-    # - thats logic we shouldn't be doing there
+    # - that's logic we shouldn't be doing there
     return KeyMe(username=username,
                 password=password,
                 mfa_code=mfa_code,
@@ -38,8 +42,14 @@ def generate_keys(event, context):
 
 ```
 
-This function will get return you json value with your STS creds if your login is valid.
+The `generate_keys` function above will return a JSON payload containing your temporary AWS access credentials. 
 
 
 # fetch_creds
-So we have included a fetch_creds cli tool for you use sts keys with saml much easier and with out pain.
+We have also included a `fetch_creds` command line tool.
+
+Usage:
+```
+$ fetch_creds
+```
+
