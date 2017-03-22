@@ -179,7 +179,3 @@ def login(config, mfa, username, password, idp, sp, principal, role, region, env
     click.echo('export AWS_ACCESS_KEY=\'' + k['aws']['access_key'].encode('utf-8') + '\'')
     click.echo('export AWS_SECRET_ACCESS_KEY=\'' + k['aws']['secret_key'].encode('utf-8') +'\'')
     click.echo('export AWS_SESSION_TOKEN=\'' + k['aws']['session_token'].encode('utf-8') + '\'')
-
-
-if __name__ == '__main__':
-    cli()
