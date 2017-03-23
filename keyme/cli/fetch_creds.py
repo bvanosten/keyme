@@ -91,7 +91,7 @@ def setup(config,update):
         'duration_seconds':duration_seconds
     }
     if click.confirm('Do you want to provide a default username?'):
-        username = click.prompt('Please enter your default username', type=string)
+        username = click.prompt('Please enter your default username')
         data['username'] = username
     if click.confirm('Do your want to enable MFA tokens?'):
         mfa_token = True
