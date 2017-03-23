@@ -127,10 +127,11 @@ def login(config, mfa, username, password, idp, sp, principal, role, region, env
     else:
         mfa = None
 
-    if username is None or data.get('username'):
-        username = click.prompt('Please Enter your username')
-    elif data.get('username'):
+    if 'username' in data:
         username = data.get('username')
+    else:
+        username = click.prompt('Please Enter your username')
+
 
     if region is not None:
         aws_region = region

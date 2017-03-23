@@ -163,7 +163,6 @@ class KeyMe:
             }
             # Submit TOTP
             google_session = session.post(challenge_url, data=payload)
-
             google_session.raise_for_status()
 
         return google_session
@@ -172,6 +171,7 @@ class KeyMe:
         """Load and parse saml from google"""
         parsed = BeautifulSoup(self.session.text, 'html.parser')
         saml_element = parsed.find('input', {'name':'SAMLResponse'}).get('value')
+
         try:
             if not saml_element:
                 raise StandardError, 'Could not get a SAML reponse, check credentials'
