@@ -3,8 +3,7 @@
 
 from bs4 import BeautifulSoup
 import base64
-import boto.s3
-import boto.sts
+import boto3
 import os
 import requests
 import urllib
@@ -45,13 +44,14 @@ class KeyMe:
 
         saml = self.parse_google_saml()
 
-        access_key, secret_key, session_token = self.get_tokens(saml, self.role, self.principal)
+        access_key, secret_key, session_token, expiration = self.get_tokens(saml, self.role, self.principal)
         return {
             'aws': {
                 'access_key': access_key,
                 'secret_key': secret_key,
                 'session_token': session_token
-            }
+            },
+            'expiration': expiration
         }
 
 #    def login_to_google(self, idpid, spid, email, password, mfapin):
@@ -183,10 +183,10 @@ class KeyMe:
 
     def login_to_sts(self, region):
         """Create an STS context via STS"""
-        return boto.sts.connect_to_region(region)
+        return boto3.client('sts',region_name=region)
 
     def get_tokens(self, saml, role, principal):
         """Load and parse tokes from AWS STS"""
-        token = self.sts.assume_role_with_saml(role, principal, saml, duration_seconds=self.duration_seconds)
+        token = self.sts.assume_role_with_saml(RoleArn=role, PrincipalArn=principal, SAMLAssertion=saml, DurationSeconds=self.duration_seconds)
 
-        return token.credentials.access_key, token.credentials.secret_key, token.credentials.session_token
+        return token['Credentials']['AccessKeyId'], token['Credentials']['SecretAccessKey'], token['Credentials']['SessionToken'], token['Credentials']['Expiration']
