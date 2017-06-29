@@ -9,6 +9,8 @@ dependencies = ['click', 'boto3', 'beautifulsoup4', 'requests', 'py']
 setup(name='keyme',
       version='0.7.1',
       description='Google SAML STS login library',
+      long_description='This tool allows you to login into AWS using Google
+      SAML Apps as part of Google For Work',
       url='http://github.com/wheniwork/keyme',
       author='Richard Genthner',
       author_email='richard.genthner@wheniwork.com',
