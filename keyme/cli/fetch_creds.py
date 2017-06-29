@@ -21,7 +21,7 @@ class Config(dict):
             pass
 
     def save(self):
-    	self.config.ensure()
+        self.config.ensure()
         with self.config.open('w') as f: # B
             f.write(json.dumps(self))
 

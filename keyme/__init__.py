@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+
 from bs4 import BeautifulSoup
 import base64
 import boto3
@@ -35,7 +37,7 @@ class KeyMe:
         self.google_accounts_url = "https://accounts.google.com/o/saml2/initsso?idpid=%s&spid=%s&forceauthn=false" % (self.idp,
                                                                                                                       self.sp)
         if kwargs:
-            raise ValueError, ("Extraneous keys passed: %s" % kwargs.keys())
+            raise ValueError("Extraneous keys passed: %s" % kwargs.keys())
 
     def key(self):
         """Return a key object"""
@@ -133,7 +135,7 @@ class KeyMe:
             try:
                 raise ValueError('Wrong Password or Captcha Required. Manually Login to remove this.')
             except ValueError as e:
-                print e
+                print(e)
                 sys.exit(1)
 
         session.headers['Referrer'] = google_session.url
@@ -174,9 +176,9 @@ class KeyMe:
 
         try:
             if not saml_element:
-                raise StandardError, 'Could not get a SAML reponse, check credentials'
-        except StandardError as e:
-            print e
+                raise Exception('Could not get a SAML reponse, check credentials')
+        except Exception as e:
+            print(e)
             sys.exit(1)
 
         return saml_element
