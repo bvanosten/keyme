@@ -28,8 +28,9 @@ class Config(dict):
 
     def save(self):
         self.config.ensure()
+        print(json.dumps(self))
         with self.config.open('w') as f:  # B
-            f.write(yaml.dump(self))
+            f.write(yaml.dump(self, allow_unicode=True))
 
 
 def generate_keys(event, context={}):
@@ -165,9 +166,7 @@ def get_keys(config, account_name, password, mfa, context={}):
     google_account = get_google_account(config)
     aws_config = get_env(config, account_name)
     k = generate_keys(
-        {'username': google_account['username'],
-         'password': password,
-         'mfa_code': mfa,
+        {'name': account_name,
          'role': aws_config['role'],
          'principal': aws_config['principal'],
          'idpid': google_account['idp'],
@@ -175,7 +174,9 @@ def get_keys(config, account_name, password, mfa, context={}):
          'region': aws_config['region'],
          'duration': aws_config['duration_seconds']
          },
-        {}
+        {'username': google_account['username'],
+         'password': password,
+         'mfa_code': mfa}
     )
     return k
 
