@@ -4,10 +4,10 @@ keyme and fetch_creds -- Tools for interacting with GOOGLE SAML SSO and AWS SAML
 
 from setuptools import find_packages, setup
 
-dependencies = ['click', 'boto3', 'beautifulsoup4', 'requests', 'py']
+dependencies = ['click', 'boto3', 'beautifulsoup4', 'requests', 'py', 'pyyaml']
 
 setup(name='keyme',
-      version='0.7.2',
+      version='0.7.4',
       description='Google SAML STS login library',
       long_description='This tool allows you to login into AWS using Google SAML Apps as part of Google For Work',
       url='http://github.com/wheniwork/keyme',
