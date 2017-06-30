@@ -3,14 +3,12 @@
 
 from __future__ import print_function
 
-from bs4 import BeautifulSoup
-import base64
-import boto3
-import os
-import requests
-import urllib
-import xml.etree.ElementTree as ET
 import sys
+
+import boto3
+import requests
+from bs4 import BeautifulSoup
+
 
 class KeyMe:
     def __init__(self, **kwargs):
@@ -176,8 +174,8 @@ class KeyMe:
 
         try:
             if not saml_element:
-                raise StandardError, 'Could not get a SAML reponse, check credentials (will fail if your login or mfa is being denied by google!)'
-        except StandardError as e:
+                raise Exception('Could not get a SAML reponse, check credentials (will fail if your login or mfa is being denied by google!)')
+        except Exception as e:
             print(e)
             sys.exit(1)
 
