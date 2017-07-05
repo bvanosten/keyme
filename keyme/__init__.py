@@ -73,7 +73,6 @@ class KeyMe:
 
         # Collect information from the page source
         decoded = BeautifulSoup(google_session.text, 'html.parser')
-        galx = decoded.find('input', {'name': 'GALX'}).get('value')
         gxf = decoded.find('input', {'name': 'gxf'}).get('value')
         cont = decoded.find('input', {'name': 'continue'}).get('value')
         page = decoded.find('input', {'name': 'Page'}).get('value')
@@ -83,7 +82,6 @@ class KeyMe:
         # Setup the payload
         payload = {
             'Page': page,
-            'GALX': galx,
             'gxf': gxf,
             'continue': cont,
             'ltmpl': 'popup',
