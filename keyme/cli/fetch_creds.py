@@ -8,15 +8,18 @@ import re
 import py
 import sys
 import yaml
+import six
 from keyme import KeyMe
 
 
 class Config(dict):
 
     def __init__(self, *args, **kwargs):
-        if not os.path.exists(py.path.local(os.path.expanduser('~/.aws/keyme.yaml')).dirname):
-            os.makedirs(py.path.local(os.path.expanduser('~/.aws/keyme.yaml')).dirname)
-        self.config = py.path.local(os.path.expanduser('~/.aws/keyme.yaml'))  # A
+        keyme_path = os.path.expanduser('~/.aws/keyme.yaml')
+        if not os.path.exists(os.path.dirname(keyme_path)):
+            os.makedirs(os.path.dirname(keyme_path))
+
+        self.config = py.path.local(keyme_path)  # A
         super(Config, self).__init__(*args, **kwargs)
 
     def load(self):
@@ -33,7 +36,7 @@ class Config(dict):
             f.write(yaml.dump(self, allow_unicode=True))
 
 
-def generate_keys(event, context={}):
+def generate_keys(event, context=None):
     username = event.get('username')
     password = event.get('password')
     mfa_code = event.get('mfa_code')
@@ -56,41 +59,40 @@ def generate_keys(event, context={}):
                  role=role,
                  principal=principal).key()
 
-def get_env_names(config, context={}):
-    if "accounts" in config:
-        return config['accounts'].keys()
-    else:
-        return []
 
-def get_env(config, env, context={}):
-    if "accounts" in config and env in config['accounts']:
-        return config['accounts'][env]
-    else:
-        return {}
+def get_env_names(config, context=None):
+    return list(config.get('accounts', {}).keys())
 
-def get_google_account(config, context={}):
-    if "google" in config:
-        return config['google']
-    else:
-        return {}
 
-def read_path(path, context={}):
+def get_env(config, env, context=None):
+    return config.get('accounts', {}).get(env, {})
+
+
+def get_google_account(config, context=None):
+    return config.get('google', {})
+
+
+def read_path(path, context=None):
     file_handle = open_path(path)
     file_contents = file_handle.read()
     file_handle.close()
     return file_contents
 
-def open_path(path, mode='r', context={}):
+
+def open_path(path, mode='r', context=None):
     py.path.local(os.path.expanduser(path)).ensure()
     return py.path.local(os.path.expanduser(path)).open(mode)
 
-def read_aws_config(aws_config_path, context={}):
+
+def read_aws_config(aws_config_path, context=None):
     return read_path(aws_config_path)
 
-def read_aws_credentials(aws_credentials_path, context={}):
+
+def read_aws_credentials(aws_credentials_path, context=None):
     return read_path(aws_credentials_path)
 
-def get_profiles_from_config_file(aws_file_path, context={}):
+
+def get_profiles_from_config_file(aws_file_path, context=None):
     regex = re.compile(r'^\[(profile )?(?P<name>[^\n\r]+(?=[\s\]]{0,1}))][\n\r](?P<keys>(?:[^\[$]+)+)', re.MULTILINE)
     aws_config_content = read_aws_config(aws_file_path)
     profiles = {}
@@ -99,70 +101,111 @@ def get_profiles_from_config_file(aws_file_path, context={}):
         profiles[match_dict['name']] = {}
         for keyval in match_dict['keys'].strip().split('\n'):
             match = re.match("^(?P<key>[^\n\r=]+)\s*=\s*(?P<value>[^\n\r]+)$", keyval)
-            if(match):
+            if match:
                 profiles[match_dict['name']][match.groupdict()["key"]] = match.groupdict()["value"]
     return profiles
 
-def get_profiles(aws_config_path="~/.aws/config", aws_credentials_path="~/.aws/credentials", context={}):
+
+def get_profiles(aws_config_path="~/.aws/config", aws_credentials_path="~/.aws/credentials", context=None):
     aws_config_profiles = get_profiles_from_config_file(aws_config_path)
     aws_credentials_profiles = get_profiles_from_config_file(aws_credentials_path)
-    for profile_name, profile_vars in aws_credentials_profiles.iteritems():
+    for profile_name, profile_vars in six.iteritems(aws_credentials_profiles):
         if profile_name in aws_config_profiles.keys():
             aws_config_profiles[profile_name].update(profile_vars)
         else:
             aws_config_profiles[profile_name] = profile_vars
     return aws_config_profiles
 
-def write_aws_configuration_profile_stanza(file_handle, profile_name, profile_keys, use_profile_keyword=True, context={}):
+
+def write_aws_configuration_profile_stanza(
+        file_handle,
+        profile_name,
+        profile_keys,
+        use_profile_keyword=True,
+        context=None
+):
     if not profile_keys:
         return
     if use_profile_keyword and profile_name != "default":
         print("[profile " + profile_name + "]", file=file_handle)
     else:
         print("[" + profile_name + "]", file=file_handle)
-    for k, v in profile_keys.iteritems():
+    for k, v in six.iteritems(profile_keys):
         print(k + " = " + v, file=file_handle)
     print("", file=file_handle)
 
+
 def add_defaults_to_profile(profile, *args, **kwargs):
-    for kw, kwv in kwargs.iteritems():
+    for kw, kwv in six.iteritems(kwargs):
         if kw not in profile:
             profile[kw] = kwv
     return profile
 
-def write_aws_configuration_file(profiles, aws_config_path="~/.aws/config", config_vars_to_use=["region", "output", "aws_access_key_id", "aws_secret_access_key", "aws_session_token"], use_profile_keyword=True, default_region="us-east-1", default_output_type="text", context={}):
+
+def write_aws_configuration_file(
+        profiles,
+        aws_config_path="~/.aws/config",
+        config_vars_to_use=None,
+        use_profile_keyword=True,
+        default_region="us-east-1",
+        default_output_type="text", context=None
+):
+    default_config_vars = [
+        "region",
+        "output",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token"
+    ]
+
+    config_vars_to_use = (
+        config_vars_to_use
+        if config_vars_to_use is not None else
+        default_config_vars
+    )
 
     if not profiles:
         return
 
     if 'default' in profiles.keys():
-       default = profiles['default']
-       del profiles['default']
+        default = profiles['default']
+        del profiles['default']
     else:
         default = {}
 
     add_defaults_to_profile(default, region=default_region, output=default_output_type)
-    default = {var: value  for var, value in default.iteritems() if var in config_vars_to_use }
+    default = {var: value for var, value in six.iteritems(default) if var in config_vars_to_use}
+
     aws_file_handle = open_path(aws_config_path, 'w')
     write_aws_configuration_profile_stanza(aws_file_handle, "default", default)
 
     for profile_name in sorted(profiles.keys()):
         profile_config = profiles[profile_name]
         add_defaults_to_profile(profile_config, region=default_region, output=default_output_type)
-        profile_vars = {var: value  for var, value in profile_config.iteritems() if var in config_vars_to_use }
+        profile_vars = {var: value  for var, value in six.iteritems(profile_config) if var in config_vars_to_use}
         write_aws_configuration_profile_stanza(aws_file_handle, profile_name, profile_vars, use_profile_keyword)
     aws_file_handle.close()
 
-def put_profiles(profiles, aws_config_path="~/.aws/config", aws_credentials_path="~/.aws/credentials", default_region="us-east-1", default_output_type="text", context={}):
+
+def put_profiles(
+        profiles,
+        aws_config_path="~/.aws/config",
+        aws_credentials_path="~/.aws/credentials",
+        default_region="us-east-1",
+        default_output_type="text",
+        context=None
+):
     write_aws_configuration_file(profiles, aws_config_path, ["region", "output"], True, default_region, default_output_type)
     write_aws_configuration_file(profiles, aws_credentials_path, ["aws_access_key_id", "aws_secret_access_key", "aws_session_token"], False, default_region, default_output_type)
 
-def get_env_config_for_profile(config, profile, context={}):
-    for account_name, account_config in config['accounts'].iteritems():
+
+def get_env_config_for_profile(config, profile, context=None):
+    for account_name, account_config in six.iteritems(config['accounts']):
         if account_config['profile'] == profile:
             return account_name
 
-def get_keys(config, account_name, password, mfa, context={}):
+
+def get_keys(config, account_name, password, mfa, context=None):
     google_account = get_google_account(config)
     aws_config = get_env(config, account_name)
     k = generate_keys(
@@ -182,11 +225,13 @@ def get_keys(config, account_name, password, mfa, context={}):
 
 pass_config = click.make_pass_decorator(Config, ensure=True)
 
+
 @click.group(chain=True)
 @pass_config
 def cli(config):
     config.load()
     pass
+
 
 @cli.command('show-config')
 @pass_config
@@ -194,12 +239,14 @@ def show_config(config):
     data = yaml.dump(config)
     click.echo(data)
 
+
 @cli.command('show-env-config')
 @pass_config
 @click.option('--env', '-e', help="Environment name given during setup")
 def show_env_config(config, env):
     if env is not None:
         print(get_env(config, env))
+
 
 @cli.command('init')
 @pass_config
@@ -238,6 +285,7 @@ def setup(config, update):
     data['mfa'] = mfa_token
     config[name] = data
     config.save()
+
 
 @cli.command('profile')
 @pass_config
@@ -281,6 +329,7 @@ def profile(config, awsaccount, password, mfa, exports, default):
     if default:
         click.echo('export AWS_DEFAULT_PROFILE="' + profile + '"')
 
+
 @cli.command('get')
 @pass_config
 @click.option('--mfa', '-m', is_flag=True, help="Enables MFA if disabled in default configuration")
@@ -311,6 +360,7 @@ def get(config, mfa, username, password, idp, sp, principal, role, region, env, 
         aws_sp = sp
         aws_region = region
         duration_seconds = duration
+        google_username = None
 
     if username is not None:
         google_username = username
