@@ -177,6 +177,7 @@ def login(config, mfa, username, password, idp, sp, principal, role, region, env
         {}
     )
 
-    click.echo('export AWS_ACCESS_KEY_ID=\'' + k['aws']['access_key'] + '\'')
-    click.echo('export AWS_SECRET_ACCESS_KEY=\'' + k['aws']['secret_key'] +'\'')
-    click.echo('export AWS_SESSION_TOKEN=\'' + k['aws']['session_token'] + '\'')
+    aws = k['aws']
+    click.echo("export AWS_ACCESS_KEY_ID=\'%(access_key)s\'" % aws)
+    click.echo("export AWS_SECRET_ACCESS_KEY=\'%(secret_key)s\'" % aws)
+    click.echo("export AWS_SESSION_TOKEN=\'%(session_token)s\'" % aws)
