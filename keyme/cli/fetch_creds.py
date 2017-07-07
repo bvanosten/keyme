@@ -1,31 +1,29 @@
 #!/usr/bin/env python
 
-import click
 import json
-import py
+import os
+import sys
+import textwrap
+
+import click
 from keyme import KeyMe
+from keyme import writer
 
-class Config(dict):
-    def __init__(self, *args, **kwargs):
-        self.config = py.path.local(
-            click.get_app_dir('keyme')
-        ).join('config.json') # A
 
+class Config(writer.ConfigParser):
+    def __init__(self, path='~/.aws/keyme', *args, **kwargs):
         super(Config, self).__init__(*args, **kwargs)
+        self._path = path
 
     def load(self):
-        """load a JSON config file from disk"""
-        try:
-            self.update(json.loads(self.config.read())) # B
-        except py.error.ENOENT:
-            pass
+        path = os.path.expanduser(self._path)
+        if os.path.exists(path):
+            self.read(path)
 
     def save(self):
-        self.config.ensure()
-        with self.config.open('w') as f: # B
-            f.write(json.dumps(self))
-
-
+        path = os.path.expanduser(self._path)
+        with open(path, 'w') as fp:
+            self.write(fp)
 
 
 def generate_keys(event, context):
@@ -42,23 +40,27 @@ def generate_keys(event, context):
 
     # Duplication is to avoid defaulting values in the class
     # - thats logic we shouldn't be doing there
-    return KeyMe(username=username,
-                password=password,
-                mfa_code=mfa_code,
-                idp=idp,
-                sp=sp,
-                region=region,
-                role=role,
-                principal=principal).key()
+    return KeyMe(
+        username=username,
+        password=password,
+        mfa_code=mfa_code,
+        idp=idp,
+        sp=sp,
+        region=region,
+        role=role,
+        principal=principal
+    ).key()
 
 
 pass_config = click.make_pass_decorator(Config, ensure=True)
+
 
 @click.group(chain=True)
 @pass_config
 def cli(config):
     config.load()
     pass
+
 
 @cli.command('show-config')
 @pass_config
@@ -69,115 +71,154 @@ def show_config(config):
 
 @cli.command('init')
 @pass_config
-@click.option('--update', help="update configuration for given env name")
-def setup(config,update):
+@click.option('--update', help='update configuration for given env name')
+def setup(config, update):
+    """
+    Creates a KeyMe environment populated with the settings necessary for
+    subsequent login actions with that environment.
+
+    :param config:
+        The configuration parser where the environment data will be stored.
+    :param update:
+        The name of the environment that will be populated. If omitted, the
+        "default" environment is used.
+    """
+
     if update not in config:
-        name = click.prompt('Please enter a name for this config', default='default')
+        name = click.prompt(
+            'Please enter a name for this config',
+            default='default'
+        )
     else:
         name = update
 
     idp_id = click.prompt('Please enter your google idp id')
     sp_id = click.prompt('Please enter your aws sp id')
-    aws_region = click.prompt('Which AWS Region do you want to be default?', default='us-east-1')
+    aws_region = click.prompt(
+        'Which AWS Region do you want to be default?',
+        default='us-east-1'
+    )
     principal_arn = click.prompt('Please provide your default principal ARN')
     role_arn = click.prompt('Please provide your default role arn')
-    duration_seconds = click.prompt('Please provide the duration in seconds of the sts token', default=3600, type=int)
-    data = {
-        'idpid':idp_id,
-        'spid': sp_id,
-        'region': aws_region,
-        'principal': principal_arn,
-        'role': role_arn,
-        'duration_seconds':duration_seconds
-    }
-    if click.confirm('Do you want to provide a default username?'):
-        username = click.prompt('Please enter your default username')
-        data['username'] = username
-    if click.confirm('Do your want to enable MFA tokens?'):
-        mfa_token = True
-    else:
-        mfa_token = None
+    duration_seconds = click.prompt(
+        'Please provide the duration in seconds of the sts token',
+        default=3600,
+        type=int
+    )
 
-    data['mfa'] = mfa_token
-    config[name] = data
+    use_mfa = click.confirm('Enable MFA tokens?')
+    use_s3v4 = click.confirm('Enable S3 signature version 4?')
+
+    config[name] = dict(
+        idpid=idp_id,
+        spid=sp_id,
+        region=aws_region,
+        principal=principal_arn,
+        role=role_arn,
+        duration_seconds=duration_seconds,
+        mfa='yes' if use_mfa else 'no',
+        s3v4='yes' if use_s3v4 else 'no'
+    )
     config.save()
+
 
 @cli.command('login')
 @pass_config
-@click.option('--mfa', '-m', is_flag=True, help="Enables MFA if disabled in default configuration")
-@click.option('--username', '-u', help="Allows overriding of the stored username")
-@click.option('--password', prompt=True, hide_input=True, confirmation_prompt=True)
-@click.option('--idp', '-i', help="Allows overrideing of the IDP id")
-@click.option('--sp', '-s', help="Allows overriding of the store SP id ")
-@click.option('--principal','-a', help='Allows overriding of the store principal')
+@click.option(
+    '--mfa', '-m',
+    is_flag=True,
+    help='Enables MFA if disabled in default configuration'
+)
+@click.option(
+    '--s3v4',
+    is_flag=True,
+    help='Enables S3 signature version 4. Only applicable with the save flag'
+)
+@click.option('--username', prompt='Please Enter your user name')
+@click.option(
+    '--password',
+    prompt='Please enter your password',
+    hide_input=True
+)
+@click.option('--idp', '-i', help='Allows overrideing of the IDP id')
+@click.option('--sp', '-s', help='Allows overriding of the store SP id ')
+@click.option(
+    '--principal','-a',
+    help='Allows overriding of the store principal'
+)
 @click.option('--role', '-r', help='Allows overriding of the stored role ARN')
-@click.option('--region', help='Allows changing the aws region by overriding default stored value')
-@click.option('--env', '-e', help="Environment name given during setup")
-@click.option('--duration', '-d', help="override stored duration for creds from sts")
-def login(config, mfa, username, password, idp, sp, principal, role, region, env, duration):
+@click.option(
+    '--region',
+    help='Allows changing the aws region by overriding default stored value'
+)
+@click.option('--env', '-e', help='Environment name given during setup')
+@click.option(
+    '--duration', '-d',
+    help='override stored duration for creds from sts'
+)
+@click.option(
+    '--save',
+    is_flag=True,
+    help='Write the credentials to the standard AWS configuration files'
+)
+def login(
+        config,
+        username,
+        password,
+        mfa,
+        duration,
+        idp,
+        sp,
+        principal,
+        role,
+        region,
+        env,
+        save,
+        s3v4
+):
 
-    if env is None:
-        click.echo("Loading Default config")
-        data = config['default']
-    else:
-        data = config[env]
+    try:
+        data = config[env or 'default']
+    except KeyError:
+        click.echo(textwrap.dedent(
+            """
+            Login failed. The "{}" KeyMe profile is not 
+            initialized. Please run the fetch_creds init command 
+            first to create this profile or specify a different 
+            profile with the --env flag.
+            """.format(env or 'default')
+        ))
+        sys.exit(1)
 
-    if mfa or data['mfa']:
+    if mfa or data.getboolean('mfa'):
         mfa = click.prompt('Please enter MFA Token')
     else:
         mfa = None
 
-    if 'username' in data:
-        username = data.get('username')
-    else:
-        username = click.prompt('Please Enter your username')
+    click.echo('Loading "{}" config'.format(env or 'default'))
 
-
-    if region is not None:
-        aws_region = region
-    else:
-        aws_region = data['region']
-
-    if principal is not None:
-        aws_principal = principal
-    else:
-        aws_principal = data['principal']
-
-    if role is not None:
-        aws_role = role
-    else:
-        aws_role = data['role']
-
-    if idp is not None:
-        google_idp = idp
-    else:
-        google_idp = data['idpid']
-
-    if sp is not None:
-        aws_sp = sp
-    else:
-        aws_sp = data['spid']
-
-    if duration is not None:
-        duration_seconds = duration
-    else:
-        duration_seconds = data['duration_seconds']
-
-    k = generate_keys(
-        {'username': username,
-         'password': password,
-         'mfa_code': mfa,
-         'role': aws_role,
-         'principal': aws_principal,
-         'idpid': google_idp,
-         'spid': aws_sp,
-         'region': aws_region,
-         'duration': duration_seconds
-        },
-        {}
-    )
-
+    payload = {
+        'username': username,
+        'password': password,
+        'mfa_code': mfa,
+        'role': role or data['role'],
+        'principal': principal or data['principal'],
+        'idpid': idp or data['idpid'],
+        'spid': sp or data['spid'],
+        'region': region or data['region'],
+        'duration': duration or data['duration_seconds']
+    }
+    k = generate_keys(payload, {})
     aws = k['aws']
-    click.echo("export AWS_ACCESS_KEY_ID=\'%(access_key)s\'" % aws)
-    click.echo("export AWS_SECRET_ACCESS_KEY=\'%(secret_key)s\'" % aws)
-    click.echo("export AWS_SESSION_TOKEN=\'%(session_token)s\'" % aws)
+
+    if save:
+        writer.write_credentials_file(env, **aws)
+        writer.write_config_file(
+            profile_name=env,
+            default_region=region,
+            enable_s3v4=s3v4 or data.getboolean('s3v4')
+        )
+
+    click.echo('export AWS_ACCESS_KEY_ID=\'%(access_key)s\'' % aws)
+    click.echo('export AWS_SECRET_ACCESS_KEY=\'%(secret_key)s\'' % aws)
+    click.echo('export AWS_SESSION_TOKEN=\'%(session_token)s\'' % aws)

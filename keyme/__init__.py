@@ -3,20 +3,19 @@
 
 from __future__ import print_function
 
-from bs4 import BeautifulSoup
-import base64
-import boto3
-import os
-import requests
-import urllib
-import xml.etree.ElementTree as ET
 import sys
+
+from six.moves.urllib.parse import urlencode
+import boto3
+import requests
+from bs4 import BeautifulSoup
+
 
 class KeyMe:
     def __init__(self, **kwargs):
         """Initialise an Alky object
 
-        Keyword Arguemts:
+        Keyword Arguments:
         username -- username **with fqdn** to login with
         password -- corresponding password
         """
@@ -25,6 +24,8 @@ class KeyMe:
         self.mfa_code = kwargs.pop('mfa_code')
         self.role = kwargs.pop('role')
         self.principal = kwargs.pop('principal')
+        self.session = None
+        self.sts = None
 
         self.region = kwargs.pop('region')
         self.idp = kwargs.pop('idp')
@@ -34,10 +35,20 @@ class KeyMe:
         else:
             self.duration_seconds = 3600
 
-        self.google_accounts_url = "https://accounts.google.com/o/saml2/initsso?idpid=%s&spid=%s&forceauthn=false" % (self.idp,
-                                                                                                                      self.sp)
+        self.google_accounts_url = self.idp_entry_url
         if kwargs:
             raise ValueError("Extraneous keys passed: %s" % kwargs.keys())
+
+    @property
+    def idp_entry_url(self):
+        """Returns the SAML SSO init URL populated with IDP & SP parameters"""
+        url = 'https://accounts.google.com/o/saml2/initsso'
+        url_params = dict(
+            idpid=self.idp or '',
+            spid=self.sp or '',
+            forceauthn='false'
+        )
+        return '{}?{}'.format(url, urlencode(url_params))
 
     def key(self):
         """Return a key object"""
@@ -46,7 +57,13 @@ class KeyMe:
 
         saml = self.parse_google_saml()
 
-        access_key, secret_key, session_token, expiration = self.get_tokens(saml, self.role, self.principal)
+        (
+            access_key,
+            secret_key,
+            session_token,
+            expiration
+        ) = self.get_tokens(saml, self.role, self.principal)
+
         return {
             'aws': {
                 'access_key': access_key,
@@ -60,14 +77,12 @@ class KeyMe:
     def login_to_google(self):
         # Initiate session handler
         session = requests.Session()
-        # The initial url that starts the authentication process.
-        idpentryurl = 'https://accounts.google.com/o/saml2/initsso?idpid=%s&spid=%s&forceauthn=false' % (self.idp, self.sp)
-        #idpentryurl = self.google_accounts_url
+
         # Configure Session Headers
         session.headers['User-Agent'] = 'AWS Sign-in'
 
         # Initial Page load
-        google_session = session.get(idpentryurl)
+        google_session = session.get(self.idp_entry_url)
         google_session.raise_for_status()
         session.headers['Referrer'] = google_session.url
 
@@ -77,7 +92,11 @@ class KeyMe:
         cont = decoded.find('input', {'name': 'continue'}).get('value')
         page = decoded.find('input', {'name': 'Page'}).get('value')
         sign_in = decoded.find('input', {'name': 'signIn'}).get('value')
-        account_login_url = decoded.find('form', {'id': 'gaia_loginform'}).get('action')
+        account_login_url = (
+            decoded
+            .find('form', {'id': 'gaia_loginform'})
+            .get('action')
+        )
 
         # Setup the payload
         payload = {
@@ -109,13 +128,26 @@ class KeyMe:
         google_session.raise_for_status()
         session.headers['Referrer'] = google_session.url
 
-        # Collect ProfileInformation, SessionState, signIn, and Password Challenge URL
+        # Collect ProfileInformation, SessionState, signIn, and Password
+        # Challenge URL
         decoded = BeautifulSoup(google_session.text, 'html.parser')
 
-        profile_information = decoded.find('input', {'name': 'ProfileInformation'}).get('value')
-        session_state = decoded.find('input', {'name': 'SessionState'}).get('value')
+        profile_information = (
+            decoded
+            .find('input', {'name': 'ProfileInformation'})
+            .get('value')
+        )
+        session_state = (
+            decoded
+            .find('input', {'name': 'SessionState'})
+            .get('value')
+        )
         sign_in = decoded.find('input', {'name': 'signIn'}).get('value')
-        passwd_challenge_url = decoded.find('form', {'id': 'gaia_loginform'}).get('action')
+        passwd_challenge_url = (
+            decoded
+            .find('form', {'id': 'gaia_loginform'})
+            .get('action')
+        )
 
         # Update the payload
         payload['SessionState'] = session_state
@@ -128,10 +160,13 @@ class KeyMe:
         google_session.raise_for_status()
         decoded = BeautifulSoup(google_session.text, 'html.parser')
         error = decoded.find(class_='error-msg')
-        cap = decoded.find('input', {'name':'logincaptcha'})
+        cap = decoded.find('input', {'name': 'logincaptcha'})
         if error is not None or cap is not None:
             try:
-                raise ValueError('Wrong Password or Captcha Required. Manually Login to remove this.')
+                raise ValueError(
+                    'Wrong Password or Captcha Required. '
+                    'Manually Login to remove this.'
+                )
             except ValueError as e:
                 print(e)
                 sys.exit(1)
@@ -170,23 +205,41 @@ class KeyMe:
     def parse_google_saml(self):
         """Load and parse saml from google"""
         parsed = BeautifulSoup(self.session.text, 'html.parser')
-        saml_element = parsed.find('input', {'name':'SAMLResponse'}).get('value')
+        saml_element = (
+            parsed
+            .find('input', {'name':'SAMLResponse'})
+            .get('value')
+        )
 
         try:
             if not saml_element:
-                raise Exception('Could not get a SAML reponse, check credentials')
+                raise Exception(
+                    'Could not get a SAML reponse, check credentials'
+                )
         except Exception as e:
             print(e)
             sys.exit(1)
 
         return saml_element
 
-    def login_to_sts(self, region):
+    @staticmethod
+    def login_to_sts(region):
         """Create an STS context via STS"""
         return boto3.client('sts',region_name=region)
 
     def get_tokens(self, saml, role, principal):
         """Load and parse tokes from AWS STS"""
-        token = self.sts.assume_role_with_saml(RoleArn=role, PrincipalArn=principal, SAMLAssertion=saml, DurationSeconds=self.duration_seconds)
+        token = self.sts.assume_role_with_saml(
+            RoleArn=role,
+            PrincipalArn=principal,
+            SAMLAssertion=saml,
+            DurationSeconds=self.duration_seconds
+        )
+        credentials = token['Credentials']
 
-        return token['Credentials']['AccessKeyId'], token['Credentials']['SecretAccessKey'], token['Credentials']['SessionToken'], token['Credentials']['Expiration']
+        return (
+            credentials['AccessKeyId'],
+            credentials['SecretAccessKey'],
+            credentials['SessionToken'],
+            credentials['Expiration']
+        )
