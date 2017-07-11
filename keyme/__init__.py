@@ -207,7 +207,7 @@ class KeyMe:
         parsed = BeautifulSoup(self.session.text, 'html.parser')
         saml_element = (
             parsed
-            .find('input', {'name':'SAMLResponse'})
+            .find('input', {'name': 'SAMLResponse'})
             .get('value')
         )
 

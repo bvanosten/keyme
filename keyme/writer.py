@@ -1,9 +1,15 @@
 import os
 import shutil
+import six
+
 
 try:
+    from io import StringIO
+    import configparser
     from configparser import ConfigParser
 except ImportError:
+    from StringIO import StringIO
+    import ConfigParser as configparser
     from ConfigParser import ConfigParser
 
 DEFAULT_REGION = 'us-east-1'
@@ -24,6 +30,69 @@ def create_backup(source_path):
         return True
     except Exception:
         return False
+
+
+def add_section(config, section_name):
+    """
+    Adds a section to the config, which gets around the convention difference
+    in default naming between ConfigParser and AWS credential files. Does
+    nothing if the section already exists.
+
+    :param config:
+        The config parser you want to add a section to
+    :param section_name:
+        The name of the section to add
+    """
+
+    if config.has_section(section_name):
+        return config
+
+    if section_name == 'default':
+        config.readfp(StringIO('[default]'))
+    else:
+        config.add_section(section_name)
+
+    return config
+
+
+def add_options(config, section_name, options):
+    """
+    Adds a dictionary of options to the config parser object in the given
+    section.
+
+    :param config:
+        The config parser to modify with the specified options
+    :param section_name:
+        The section where the options should be stored
+    :param options:
+        A dictionary containing the options to set
+    :return:
+        The modified config parser
+    """
+
+    add_section(config, section_name or 'default')
+
+    for key, value in six.iteritems(options):
+        config.set(section_name, key, '{}'.format(value))
+
+    return config
+
+
+def configs_to_dict(configs):
+    """
+    Converts a config parser object into a dictionary.
+
+    :param configs:
+        The config parser instance to convert into a dictionary.
+    :return:
+        A dictionary representation of the config parser.
+    """
+
+    out = {}
+    for section in configs.sections():
+        out[section] = dict(configs.items(section))
+
+    return out
 
 
 def write_credentials_file(profile_name, access_key, secret_key, session_token):
@@ -50,17 +119,17 @@ def write_credentials_file(profile_name, access_key, secret_key, session_token):
     if os.path.exists(credentials_path):
         credentials.read(credentials_path)
 
-    credentials[profile_name] = dict(
+    credentials = add_options(credentials, profile_name, dict(
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         aws_session_token=session_token
-    )
+    ))
 
     create_backup(credentials_path)
     with open(credentials_path, 'w') as fp:
         credentials.write(fp)
 
-    return dict(credentials.items())
+    return configs_to_dict(credentials)
 
 
 def write_config_file(
@@ -95,19 +164,18 @@ def write_config_file(
         configs.read(configs_path)
 
     profile_key = 'profile {}'.format(profile_name)
-    if profile_key not in configs:
-        configs[profile_key] = {}
-    config_data = configs[profile_key]
-    config_data['region'] = default_region or DEFAULT_REGION
-    config_data['output'] = output_type or DEFAULT_OUTPUT_TYPE
+    add_options(configs, profile_key, dict(
+        region=default_region or DEFAULT_REGION,
+        output=output_type or DEFAULT_OUTPUT_TYPE
+    ))
 
     if enable_s3v4:
-        config_data['s3'] = '\nsignature_version = s3v4'
-    elif 's3' in config_data:
-        del config_data['s3']
+        configs.set(profile_key, 's3', '\nsignature_version = s3v4')
+    elif configs.has_option(profile_key, 's3'):
+        configs.remove_option(profile_key, 's3')
 
     create_backup(configs_path)
     with open(configs_path, 'w') as fp:
         configs.write(fp)
 
-    return dict(configs.items())
+    return configs_to_dict(configs)
