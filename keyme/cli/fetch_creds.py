@@ -6,13 +6,14 @@ import sys
 import textwrap
 
 import click
+
 from keyme import KeyMe
 from keyme import writer
 
 
 class Config(writer.ConfigParser):
     def __init__(self, path='~/.aws/keyme', *args, **kwargs):
-        super(Config, self).__init__(*args, **kwargs)
+        writer.ConfigParser.__init__(self, *args, **kwargs)
         self._path = path
 
     def load(self):
@@ -22,6 +23,10 @@ class Config(writer.ConfigParser):
 
     def save(self):
         path = os.path.expanduser(self._path)
+
+        if not os.path.exists(path):
+            os.makedirs(os.path.dirname(path))
+
         with open(path, 'w') as fp:
             self.write(fp)
 
@@ -84,7 +89,7 @@ def setup(config, update):
         "default" environment is used.
     """
 
-    if update not in config:
+    if not config.has_section(update):
         name = click.prompt(
             'Please enter a name for this config',
             default='default'
@@ -109,7 +114,7 @@ def setup(config, update):
     use_mfa = click.confirm('Enable MFA tokens?')
     use_s3v4 = click.confirm('Enable S3 signature version 4?')
 
-    config[name] = dict(
+    writer.add_options(config, name, dict(
         idpid=idp_id,
         spid=sp_id,
         region=aws_region,
@@ -118,7 +123,8 @@ def setup(config, update):
         duration_seconds=duration_seconds,
         mfa='yes' if use_mfa else 'no',
         s3v4='yes' if use_s3v4 else 'no'
-    )
+    ))
+
     config.save()
 
 
@@ -140,7 +146,7 @@ def setup(config, update):
     prompt='Please enter your password',
     hide_input=True
 )
-@click.option('--idp', '-i', help='Allows overrideing of the IDP id')
+@click.option('--idp', '-i', help='Allows overriding of the IDP id')
 @click.option('--sp', '-s', help='Allows overriding of the store SP id ')
 @click.option(
     '--principal','-a',
@@ -177,9 +183,8 @@ def login(
         s3v4
 ):
 
-    try:
-        data = config[env or 'default']
-    except KeyError:
+    profile_name = env or 'default'
+    if not config.has_section(profile_name):
         click.echo(textwrap.dedent(
             """
             Login failed. The "{}" KeyMe profile is not 
@@ -190,7 +195,7 @@ def login(
         ))
         sys.exit(1)
 
-    if mfa or data.getboolean('mfa'):
+    if mfa or config.getboolean(profile_name, 'mfa'):
         mfa = click.prompt('Please enter MFA Token')
     else:
         mfa = None
@@ -201,12 +206,12 @@ def login(
         'username': username,
         'password': password,
         'mfa_code': mfa,
-        'role': role or data['role'],
-        'principal': principal or data['principal'],
-        'idpid': idp or data['idpid'],
-        'spid': sp or data['spid'],
-        'region': region or data['region'],
-        'duration': duration or data['duration_seconds']
+        'role': role or config.get(profile_name, 'role'),
+        'principal': principal or config.get(profile_name, 'principal'),
+        'idpid': idp or config.get(profile_name, 'idpid'),
+        'spid': sp or config.get(profile_name, 'spid'),
+        'region': region or config.get(profile_name, 'region'),
+        'duration': duration or config.get(profile_name, 'duration_seconds')
     }
     k = generate_keys(payload, {})
     aws = k['aws']
@@ -216,7 +221,7 @@ def login(
         writer.write_config_file(
             profile_name=env,
             default_region=region,
-            enable_s3v4=s3v4 or data.getboolean('s3v4')
+            enable_s3v4=s3v4 or config.getboolean(profile_name, 's3v4')
         )
 
     click.echo('export AWS_ACCESS_KEY_ID=\'%(access_key)s\'' % aws)
