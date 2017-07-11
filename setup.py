@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 setup(name='keyme',
-      version='0.7.2',
+      version='0.8.0',
       description='Google SAML STS login library',
       long_description=(
           'This tool allows you to login into AWS using Google SAML Apps as '
