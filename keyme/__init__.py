@@ -8,6 +8,7 @@ import sys
 from six.moves.urllib.parse import urlencode
 import boto3
 import requests
+import os, time, stat
 from bs4 import BeautifulSoup
 
 
@@ -26,6 +27,8 @@ class KeyMe:
         self.principal = kwargs.pop('principal')
         self.session = None
         self.sts = None
+        ''' 4 hours in seconds'''
+        self.cache_time = 14400
 
         self.region = kwargs.pop('region')
         self.idp = kwargs.pop('idp')
@@ -34,6 +37,11 @@ class KeyMe:
             self.timeout = kwargs.pop('duration_seconds')
         else:
             self.duration_seconds = 3600
+
+        if kwargs.get('refresh'):
+            self.refresh = kwargs.pop('refresh')
+        else:
+            self.refresh = False
 
         self.google_accounts_url = self.idp_entry_url
         if kwargs:
@@ -50,19 +58,41 @@ class KeyMe:
         )
         return '{}?{}'.format(url, urlencode(url_params))
 
+    def cache_check(self, saml, role, principal):
+        cache_file_mtime = round(os.stat("~/.aws/credentials").st_mtime)
+        if os.path.isfile("~/.aws/.keyme_cache"):
+            cache_age = time.time() - os.stat("~/.aws/.keyme_cache")[stat.ST_MTIME]
+            if cache_age > self.cache_time:
+            fp = open('~/.aws/.keyme_cache', 'w')
+            self.saml = fp
+            return True
+        else:
+            return False
+
+    def cache_write(self, saml, role, principal):
+        fp = open('~/.aws/.keyme_cache', 'w')
+        fp.write(saml)
+
+
     def key(self):
         """Return a key object"""
-        self.session = self.login_to_google()
-        self.sts = self.login_to_sts(self.region)
+        if self.cache_check:
 
-        saml = self.parse_google_saml()
+            if refresh == False:
+               self.session = self.login_to_google()
+               self.sts = self.login_to_sts(self.region)
+
+                saml = self.parse_google_saml()
+                self.write_cache(saml, self.role, self.principal)
+            else:
+                saml = self.saml
 
         (
             access_key,
             secret_key,
             session_token,
             expiration
-        ) = self.get_tokens(saml, self.role, self.principal)
+        ) = self.get_tokens(self, saml, self.role, self.principal)
 
         return {
             'aws': {
