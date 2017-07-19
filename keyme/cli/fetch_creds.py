@@ -127,7 +127,6 @@ def setup(config, update):
 
     config.save()
 
-
 @cli.command('login')
 @pass_config
 @click.option(
@@ -180,7 +179,7 @@ def login(
         region,
         env,
         save,
-        s3v4
+        s3v4,
 ):
 
     profile_name = env or 'default'
@@ -227,3 +226,8 @@ def login(
     click.echo('export AWS_ACCESS_KEY_ID=\'%(access_key)s\'' % aws)
     click.echo('export AWS_SECRET_ACCESS_KEY=\'%(secret_key)s\'' % aws)
     click.echo('export AWS_SESSION_TOKEN=\'%(session_token)s\'' % aws)
+
+
+@click.command('refresh')
+@pass_config
+def refresh():

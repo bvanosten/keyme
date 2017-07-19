@@ -8,8 +8,9 @@ import sys
 from six.moves.urllib.parse import urlencode
 import boto3
 import requests
-import os, time, stat
+import os, time, stat, datetime
 from bs4 import BeautifulSoup
+import json
 
 
 class KeyMe:
@@ -58,21 +59,54 @@ class KeyMe:
         )
         return '{}?{}'.format(url, urlencode(url_params))
 
-    def cache_check(self, saml, role, principal):
-        cache_file_mtime = round(os.stat("~/.aws/credentials").st_mtime)
+    def cache_check(self):
         if os.path.isfile("~/.aws/.keyme_cache"):
-            cache_age = time.time() - os.stat("~/.aws/.keyme_cache")[stat.ST_MTIME]
-            if cache_age > self.cache_time:
-            fp = open('~/.aws/.keyme_cache', 'w')
-            self.saml = fp
+            cache_file_mtime = datetime.datetime.now() - datetime.from_timestamp(round(os.stat("~/.aws/credentials").st_mtime))
+            if cache_file_mtime.seconds > self.cache_time:
+                with open('~/.aws/.keyme_cache', 'w') as fp
+                    data = fp.split('\n', 1)
+                aws_info = json.loads(data[0])
+                self.role = aws_info['role']
+                self.principal = aws_info['principal']
+                self.saml = data[1]
+
             return True
         else:
             return False
 
     def cache_write(self, saml, role, principal):
+        data = json.dumps({'role': role, 'principal': principal})
         fp = open('~/.aws/.keyme_cache', 'w')
+        fp.write("%s \n", % (data))
         fp.write(saml)
+        fp.close
 
+
+    def refresh(self):
+        if refresh == False:
+            self.session = self.login_to_google()
+            self.sts = self.login_to_sts(self.region)
+
+            saml = self.parse_google_saml()
+            self.write_cache(saml, self.role, self.principal)
+        else:
+            saml = self.saml
+
+        (
+            access_key,
+            secret_key,
+            session_token,
+            expiration
+        ) = self.get_tokens(self, saml, self.role, self.principal)
+
+        return {
+            'aws': {
+                'access_key': access_key,
+                'secret_key': secret_key,
+                'session_token': session_token
+            },
+            'expiration': expiration
+        }
 
     def key(self):
         """Return a key object"""
@@ -103,7 +137,6 @@ class KeyMe:
             'expiration': expiration
         }
 
-#    def login_to_google(self, idpid, spid, email, password, mfapin):
     def login_to_google(self):
         # Initiate session handler
         session = requests.Session()
