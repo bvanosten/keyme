@@ -31,7 +31,7 @@ class KeyMe:
         self.idp = kwargs.pop('idp')
         self.sp = kwargs.pop('sp')
         if kwargs.get('duration_seconds'):
-            self.timeout = kwargs.pop('duration_seconds')
+            self.duration_seconds = kwargs.pop('duration_seconds')
         else:
             self.duration_seconds = 3600
 
